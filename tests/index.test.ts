@@ -204,103 +204,170 @@ describe("calculateMix", () => {
     expect(result.finalConcentrations.n).toBeGreaterThan(0);
   });
 
-  it("throws when EC target exceeds achievable maximum", () => {
+  it("throws if target EC exceeds maximum achievable", () => {
     const stocks: StockSolution[] = [{
-      id: "s1",
+      id: "stock1",
       dilutionFactor: 1,
-      constituents: [{ nutrientId: "potassium-nitrate", gramsPerLiter: 1 }],
+      constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: 10 }], // Low concentration
     }];
-    expect(() =>
-      calculateMix({ ecTarget: 100 as EC }, stocks)
-    ).toThrow("exceeds maximum achievable");
+    const target: MixTarget = { ecTarget: 5.0 as EC }; // High target
+    expect(() => calculateMix(target, stocks)).toThrow(/EC target .* exceeds maximum achievable/);
   });
 
-  it("respects custom rounding decimals", () => {
-    const stocks: StockSolution[] = [{
-      id: "s1",
-      dilutionFactor: 1,
-      constituents: [
-        { nutrientId: "calcium-nitrate", gramsPerLiter: 100 },
-        { nutrientId: "potassium-nitrate", gramsPerLiter: 50 },
-      ],
-    }];
-    const target: MixTarget = { ecTarget: 1.0 as EC };
-    const result = calculateMix(target, stocks, { roundingDecimals: 1 });
-    const ratio = result.dilutionRatios["s1"];
-    expect(ratio.toString()).not.toContain("."); // Should be like 0.5, not 0.500
-    expect(ratio).toBeCloseTo(0.5, 0);
-  });
-
-  it("warns about pH outside recommended range", () => {
-    const stocks: StockSolution[] = [{
-      id: "s1",
-      dilutionFactor: 1,
-      constituents: [{ nutrientId: "potassium-nitrate", gramsPerLiter: 100 }],
-    }];
-    const lowPh = calculateMix({ ecTarget: 0.5 as EC, phTarget: 4.0 as PH }, stocks);
-    const highPh = calculateMix({ ecTarget: 0.5 as EC, phTarget: 9.0 as PH }, stocks);
-    expect(lowPh.warnings.some(w => w.includes("pH"))).toBe(true);
-    expect(highPh.warnings.some(w => w.includes("pH"))).toBe(true);
-  });
-
-  it("calculates final nutrient concentrations correctly", () => {
+  it("calculates correct nutrient concentrations for a simple mix", () => {
     const stocks: StockSolution[] = [
       {
-        id: "ca-stock",
-        dilutionFactor: 1,
-        constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: 100 }],
-      },
-      {
-        id: "k-stock",
+        id: "stock-kn",
         dilutionFactor: 1,
         constituents: [{ nutrientId: "potassium-nitrate", gramsPerLiter: 100 }],
       },
     ];
-    const result = calculateMix({ ecTarget: 1.0 as EC }, stocks);
-    expect(result.finalConcentrations.ca).toBeGreaterThan(0);
-    expect(result.finalConcentrations.k).toBeGreaterThan(0);
-    expect(result.finalConcentrations.n).toBeGreaterThan(0);
-  });
-});
+    const target: MixTarget = { ecTarget: 1.0 as EC };
+    const result = calculateMix(target, stocks);
 
-// ──────────────────────────────────────────────
-// Stock compatibility tests
-// ──────────────────────────────────────────────
+    const kn = getNutrientById("potassium-nitrate");
+    expect(kn).toBeDefined();
 
-describe("checkStockCompatibility", () => {
-  it("returns compatible for single stock", () => {
-    const stocks: StockSolution[] = [{
-      id: "s1",
-      dilutionFactor: 1,
-      constituents: [{ nutrientId: "potassium-nitrate", gramsPerLiter: 100 }],
-    }];
-    const result = checkStockCompatibility(stocks);
-    expect(result.compatible).toBe(true);
-    expect(result.incompatibilities).toHaveLength(0);
+    // Calculate expected N and K based on 1.0 EC target
+    // 1.0 EC / (100 g/L * 0.65 EC/g) = 1.0 / 65 = 0.01538 dilution factor
+    // N: 13.9% * 100 g/L * 0.01538 = 21.38 mg/L
+    // K: 38.7% * 100 g/L * 0.01538 = 59.5 mg/L
+    const expectedDilutionFactor = target.ecTarget / (100 * (kn?.ecPerGram || 0));
+    const expectedN = (kn?.n || 0) * 100 * expectedDilutionFactor;
+    const expectedK = (kn?.k || 0) * 100 * expectedDilutionFactor;
+
+    expect(result.finalConcentrations.n).toBeCloseTo(expectedN, 1);
+    expect(result.finalConcentrations.k).toBeCloseTo(expectedK, 1);
+    expect(result.dilutionRatios["stock-kn"]).toBeCloseTo(expectedDilutionFactor, 3);
   });
 
-  it("detects incompatibility across stocks", () => {
+  it("handles multiple constituents in a single stock", () => {
     const stocks: StockSolution[] = [
       {
-        id: "ca-stock",
+        id: "stock-combo",
+        dilutionFactor: 1,
+        constituents: [
+          { nutrientId: "calcium-nitrate", gramsPerLiter: 50 },
+          { nutrientId: "potassium-nitrate", gramsPerLiter: 50 },
+        ],
+      },
+    ];
+    const target: MixTarget = { ecTarget: 1.0 as EC };
+    const result = calculateMix(target, stocks);
+    expect(result.ecEstimate).toBeCloseTo(1.0, 1);
+    expect(result.finalConcentrations.n).toBeGreaterThan(0);
+    expect(result.finalConcentrations.k).toBeGreaterThan(0);
+    expect(result.finalConcentrations.ca).toBeGreaterThan(0);
+  });
+
+  it("applies dilution factor correctly to stock solutions", () => {
+    const stocks: StockSolution[] = [
+      {
+        id: "stock-diluted",
+        dilutionFactor: 100, // 1:100 dilution
+        constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: 1000 }], // 1000g/L stock
+      },
+    ];
+    const target: MixTarget = { ecTarget: 1.0 as EC };
+    const result = calculateMix(target, stocks);
+
+    const cn = getNutrientById("calcium-nitrate");
+    expect(cn).toBeDefined();
+
+    // Effective concentration in working solution is 1000g/L / 100 = 10g/L
+    // Effective EC contribution is 10g/L * 0.72 EC/g = 7.2 EC
+    // Dilution ratio for 1.0 EC target: 1.0 / 7.2 = 0.13888...
+    const effectiveGramsPerLiter = 1000 / 100;
+    const effectiveEcContribution = effectiveGramsPerLiter * (cn?.ecPerGram || 0);
+    const expectedDilutionRatio = target.ecTarget / effectiveEcContribution;
+
+    expect(result.dilutionRatios["stock-diluted"]).toBeCloseTo(expectedDilutionRatio, 3);
+    expect(result.ecEstimate).toBeCloseTo(1.0, 1);
+  });
+
+  it("adds warning for pH target outside recommended range", () => {
+    const stocks: StockSolution[] = [
+      {
+        id: "stock1",
+        dilutionFactor: 1,
+        constituents: [{ nutrientId: "potassium-nitrate", gramsPerLiter: 100 }],
+      },
+    ];
+    const target: MixTarget = { ecTarget: 1.0 as EC, phTarget: 3.0 as PH };
+    const result = calculateMix(target, stocks);
+    expect(result.warnings.length).toBeGreaterThan(0);
+    expect(result.warnings[0]).toContain("Target pH outside recommended hydroponic range");
+  });
+
+  it("does not add warning for pH target within recommended range", () => {
+    const stocks: StockSolution[] = [
+      {
+        id: "stock1",
+        dilutionFactor: 1,
+        constituents: [{ nutrientId: "potassium-nitrate", gramsPerLiter: 100 }],
+      },
+    ];
+    const target: MixTarget = { ecTarget: 1.0 as EC, phTarget: 6.0 as PH };
+    const result = calculateMix(target, stocks);
+    expect(result.warnings.length).toBe(0);
+  });
+
+  it("uses custom rounding precision", () => {
+    const stocks: StockSolution[] = [
+      {
+        id: "stock1",
+        dilutionFactor: 1,
+        constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: 100 }],
+      },
+    ];
+    const target: MixTarget = { ecTarget: 1.5 as EC };
+    const result = calculateMix(target, stocks, { roundingDecimals: 5 });
+    // Expect more decimal places than default (3)
+    const ratio = result.dilutionRatios["stock1"];
+    expect(ratio.toString().split('.')[1]?.length || 0).toBeGreaterThanOrEqual(5);
+  });
+
+  it("checkStockCompatibility identifies incompatibility between two stocks", () => {
+    const stocks: StockSolution[] = [
+      {
+        id: "stockA",
         dilutionFactor: 1,
         constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: 100 }],
       },
       {
-        id: "mg-stock",
+        id: "stockB",
         dilutionFactor: 1,
         constituents: [{ nutrientId: "magnesium-sulfate", gramsPerLiter: 100 }],
       },
     ];
     const result = checkStockCompatibility(stocks);
     expect(result.compatible).toBe(false);
-    expect(result.incompatibilities.length).toBeGreaterThan(0);
+    expect(result.incompatibilities).toHaveLength(1);
+    expect(result.incompatibilities[0]).toContain("calcium-nitrate <-> magnesium-sulfate");
   });
 
-  it("handles multiple constituents per stock", () => {
+  it("checkStockCompatibility returns compatible for compatible stocks", () => {
     const stocks: StockSolution[] = [
       {
-        id: "mixed",
+        id: "stockA",
+        dilutionFactor: 1,
+        constituents: [{ nutrientId: "potassium-nitrate", gramsPerLiter: 100 }],
+      },
+      {
+        id: "stockB",
+        dilutionFactor: 1,
+        constituents: [{ nutrientId: "urea", gramsPerLiter: 100 }],
+      },
+    ];
+    const result = checkStockCompatibility(stocks);
+    expect(result.compatible).toBe(true);
+    expect(result.incompatibilities).toHaveLength(0);
+  });
+
+  it("checkStockCompatibility handles multiple constituents within a single stock", () => {
+    const stocks: StockSolution[] = [
+      {
+        id: "stockA",
         dilutionFactor: 1,
         constituents: [
           { nutrientId: "calcium-nitrate", gramsPerLiter: 50 },
@@ -308,58 +375,159 @@ describe("checkStockCompatibility", () => {
         ],
       },
       {
-        id: "sulfate",
+        id: "stockB",
         dilutionFactor: 1,
         constituents: [{ nutrientId: "magnesium-sulfate", gramsPerLiter: 100 }],
       },
     ];
     const result = checkStockCompatibility(stocks);
     expect(result.compatible).toBe(false);
+    expect(result.incompatibilities).toHaveLength(1);
+    expect(result.incompatibilities[0]).toContain("calcium-nitrate <-> magnesium-sulfate");
+  });
+
+  it("checkStockCompatibility handles multiple incompatibilities", () => {
+    const stocks: StockSolution[] = [
+      {
+        id: "stockA",
+        dilutionFactor: 1,
+        constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: 100 }],
+      },
+      {
+        id: "stockB",
+        dilutionFactor: 1,
+        constituents: [
+          { nutrientId: "magnesium-sulfate", gramsPerLiter: 50 },
+          { nutrientId: "monopotassium-phosphate", gramsPerLiter: 50 },
+        ],
+      },
+    ];
+    const result = checkStockCompatibility(stocks);
+    expect(result.compatible).toBe(false);
+    expect(result.incompatibilities).toHaveLength(2);
+    expect(result.incompatibilities).toContain("calcium-nitrate <-> magnesium-sulfate");
+    expect(result.incompatibilities).toContain("calcium-nitrate <-> monopotassium-phosphate");
   });
 });
 
 // ──────────────────────────────────────────────
-// EC/PPM conversion tests
+// Media preparation tests
 // ──────────────────────────────────────────────
 
-describe("ecToPpm", () => {
-  it("converts EC 1.0 to approximately 500-700 ppm", () => {
-    const ppm = ecToPpm(1.0 as EC);
-    expect(ppm).toBeGreaterThanOrEqual(500);
-    expect(ppm).toBeLessThanOrEqual(700);
+describe("media preparation", () => {
+  it("calculates correct amounts for MS media", () => {
+    const msMedia = getMediaFormulation("ms-basal-salt-mixture");
+    expect(msMedia).toBeDefined();
+    const recipe: MediaRecipe = {
+      mediaId: "ms-basal-salt-mixture",
+      volumeMl: 1000,
+      sucroseGrams: 30,
+      agarGrams: 8,
+      growthRegulators: [],
+    };
+    const result = calculateMediaPreparation(recipe);
+    expect(result.mediaSaltGrams).toBeCloseTo(4.4, 2);
+    expect(result.sucroseGrams).toBe(30);
+    expect(result.agarGrams).toBe(8);
+    expect(result.totalGrams).toBeCloseTo(42.4, 2);
+    expect(result.steps.length).toBeGreaterThan(5);
+    expect(result.steps[0]).toContain("4.40 grams of MS Basal Salt Mixture");
   });
 
-  it("converts EC 0.0 to 0 ppm", () => {
-    expect(ecToPpm(0.0 as EC)).toBe(0);
+  it("calculates correct amounts for custom media", () => {
+    const recipe: MediaRecipe = {
+      mediaId: "custom",
+      customMediaSalts: [
+        { nutrientId: "calcium-nitrate", mgPerLiter: 100 },
+        { nutrientId: "potassium-nitrate", mgPerLiter: 50 },
+      ],
+      volumeMl: 500,
+      sucroseGrams: 20,
+      agarGrams: 5,
+      growthRegulators: [],
+    };
+    const result = calculateMediaPreparation(recipe);
+    expect(result.mediaSaltGrams).toBeCloseTo(0.075, 3); // (100+50)mg/L * 0.5L = 75mg = 0.075g
+    expect(result.sucroseGrams).toBe(20);
+    expect(result.agarGrams).toBe(5);
+    expect(result.totalGrams).toBeCloseTo(25.075, 3);
+    expect(result.steps.length).toBeGreaterThan(5);
+    expect(result.steps[0]).toContain("0.05 grams of Calcium Nitrate");
+    expect(result.steps[1]).toContain("0.025 grams of Potassium Nitrate");
   });
 
-  it("converts EC 2.0 to double EC 1.0", () => {
-    const ppm1 = ecToPpm(1.0 as EC);
-    const ppm2 = ecToPpm(2.0 as EC);
-    expect(ppm2).toBeCloseTo(ppm1 * 2, 0);
+  it("includes growth regulators in calculation and steps", () => {
+    const recipe: MediaRecipe = {
+      mediaId: "ms-basal-salt-mixture",
+      volumeMl: 1000,
+      sucroseGrams: 30,
+      agarGrams: 8,
+      growthRegulators: [{ id: "bap", mgPerLiter: 1 }],
+    };
+    const result = calculateMediaPreparation(recipe);
+    expect(result.growthRegulatorGrams?.bap).toBeCloseTo(0.001, 3); // 1mg/L * 1L = 1mg = 0.001g
+    expect(result.totalGrams).toBeCloseTo(42.401, 3);
+    expect(result.steps.some((s) => s.includes("BAP"))).toBe(true);
   });
 
-  it("handles typical hydroponic EC values", () => {
-    expect(ecToPpm(1.5 as EC)).toBeGreaterThan(ecToPpm(1.0 as EC));
-    expect(ecToPpm(2.5 as EC)).toBeGreaterThan(ecToPpm(2.0 as EC));
+  it("throws error for unknown media formulation", () => {
+    const recipe: MediaRecipe = {
+      mediaId: "nonexistent-media",
+      volumeMl: 1000,
+      sucroseGrams: 30,
+      agarGrams: 8,
+      growthRegulators: [],
+    };
+    expect(() => calculateMediaPreparation(recipe)).toThrow("Unknown media formulation");
+  });
+
+  it("throws error for invalid volume", () => {
+    const recipe: MediaRecipe = {
+      mediaId: "ms-basal-salt-mixture",
+      volumeMl: 0,
+      sucroseGrams: 30,
+      agarGrams: 8,
+      growthRegulators: [],
+    };
+    expect(() => calculateMediaPreparation(recipe)).toThrow("Volume must be positive");
+  });
+
+  it("getAllMedia returns all media formulations", () => {
+    const allMedia = getAllMedia();
+    expect(allMedia.length).toBeGreaterThan(0);
+    expect(allMedia.some((m) => m.id === "ms-basal-salt-mixture")).toBe(true);
+  });
+
+  it("getMediaFormulation returns correct media by ID", () => {
+    const ms = getMediaFormulation("ms-basal-salt-mixture");
+    expect(ms).toBeDefined();
+    expect(ms?.name).toBe("MS Basal Salt Mixture");
+  });
+
+  it("getMediaFormulation returns undefined for unknown ID", () => {
+    expect(getMediaFormulation("nonexistent")).toBeUndefined();
   });
 });
 
-describe("ppmToEc", () => {
-  it("converts 500 ppm to approximately EC 1.0", () => {
-    const ec = ppmToEc(500);
-    expect(ec).toBeCloseTo(1.0, 1);
+// ──────────────────────────────────────────────
+// Growth Regulator tests
+// ──────────────────────────────────────────────
+
+describe("growth regulators", () => {
+  it("getGrowthRegulator returns correct GR by ID", () => {
+    const bap = getGrowthRegulator("bap");
+    expect(bap).toBeDefined();
+    expect(bap?.name).toBe("6-Benzylaminopurine (BAP)");
   });
 
-  it("converts 0 ppm to EC 0.0", () => {
-    expect(ppmToEc(0)).toBe(0);
+  it("getGrowthRegulator returns undefined for unknown ID", () => {
+    expect(getGrowthRegulator("nonexistent-gr")).toBeUndefined();
   });
 
-  it("is inverse of ecToPpm", () => {
-    const originalEc = 1.5 as EC;
-    const ppm = ecToPpm(originalEc);
-    const backToEc = ppmToEc(ppm);
-    expect(backToEc).toBeCloseTo(originalEc, 1);
+  it("getAllGrowthRegulators returns all GRs", () => {
+    const allGRs = getAllGrowthRegulators();
+    expect(allGRs.length).toBeGreaterThan(0);
+    expect(allGRs.some((gr) => gr.id === "bap")).toBe(true);
   });
 });
 
@@ -367,211 +535,190 @@ describe("ppmToEc", () => {
 // Unit conversion tests
 // ──────────────────────────────────────────────
 
-describe("convertUnit", () => {
-  it("converts grams to milligrams", () => {
+describe("unit conversions", () => {
+  it("ecToPpm converts correctly using 500 factor", () => {
+    expect(ecToPpm(1.0 as EC, 500)).toBe(500);
+    expect(ecToPpm(2.5 as EC, 500)).toBe(1250);
+  });
+
+  it("ecToPpm converts correctly using 700 factor", () => {
+    expect(ecToPpm(1.0 as EC, 700)).toBe(700);
+    expect(ecToPpm(2.0 as EC, 700)).toBe(1400);
+  });
+
+  it("ppmToEc converts correctly using 500 factor", () => {
+    expect(ppmToEc(500, 500)).toBe(1.0);
+    expect(ppmToEc(1250, 500)).toBe(2.5);
+  });
+
+  it("ppmToEc converts correctly using 700 factor", () => {
+    expect(ppmToEc(700, 700)).toBe(1.0);
+    expect(ppmToEc(1400, 700)).toBe(2.0);
+  });
+
+  it("convertUnit converts mg/L to ppm", () => {
+    expect(convertUnit(100, "mg/L", "ppm")).toBe(100);
+  });
+
+  it("convertUnit converts ppm to mg/L", () => {
+    expect(convertUnit(100, "ppm", "mg/L")).toBe(100);
+  });
+
+  it("convertUnit converts g to mg", () => {
     expect(convertUnit(1, "g", "mg")).toBe(1000);
-    expect(convertUnit(0.5, "g", "mg")).toBe(500);
   });
 
-  it("converts milligrams to grams", () => {
+  it("convertUnit converts mg to g", () => {
     expect(convertUnit(1000, "mg", "g")).toBe(1);
-    expect(convertUnit(500, "mg", "g")).toBe(0.5);
   });
 
-  it("converts kilograms to grams", () => {
-    expect(convertUnit(1, "kg", "g")).toBe(1000);
-    expect(convertUnit(2.5, "kg", "g")).toBe(2500);
-  });
-
-  it("converts liters to milliliters", () => {
+  it("convertUnit converts L to mL", () => {
     expect(convertUnit(1, "L", "mL")).toBe(1000);
-    expect(convertUnit(0.25, "L", "mL")).toBe(250);
   });
 
-  it("converts milliliters to liters", () => {
+  it("convertUnit converts mL to L", () => {
     expect(convertUnit(1000, "mL", "L")).toBe(1);
-    expect(convertUnit(250, "mL", "L")).toBe(0.25);
   });
 
-  it("returns same value for same unit", () => {
-    expect(convertUnit(42, "g", "g")).toBe(42);
-    expect(convertUnit(100, "mL", "mL")).toBe(100);
-  });
-
-  it("handles concentration units (g/L to mg/L)", () => {
-    expect(convertUnit(1, "g/L", "mg/L")).toBe(1000);
-    expect(convertUnit(500, "mg/L", "g/L")).toBe(0.5);
+  it("convertUnit throws for unsupported conversion", () => {
+    expect(() => convertUnit(1, "g", "L")).toThrow("Unsupported unit conversion");
   });
 });
 
 // ──────────────────────────────────────────────
-// pH adjustment calculation tests
+// pH adjustment tests
 // ──────────────────────────────────────────────
 
-describe("calculatePhAdjustment", () => {
-  it("calculates acid needed to lower pH", () => {
+describe("pH adjustment", () => {
+  it("calculates acid amount for lowering pH", () => {
     const result = calculatePhAdjustment({
       currentPh: 7.0 as PH,
-      targetPh: 5.5 as PH,
-      volumeLiters: 10,
-      bufferStrength: "weak",
+      targetPh: 5.8 as PH,
+      solutionVolumeL: 10,
+      phAdjusterType: "acid",
+      adjusterConcentration: 80, // 80% phosphoric acid
     });
-    expect(result.direction).toBe("acid");
-    expect(result.amountMl).toBeGreaterThan(0);
-    expect(result.acidType).toBeDefined();
+    expect(result.adjusterVolumeMl).toBeGreaterThan(0);
+    expect(result.adjusterVolumeMl).toBeLessThan(100); // Should be a reasonable amount
+    expect(result.warnings.length).toBe(0);
   });
 
-  it("calculates base needed to raise pH", () => {
+  it("calculates base amount for raising pH", () => {
     const result = calculatePhAdjustment({
       currentPh: 5.0 as PH,
-      targetPh: 6.0 as PH,
-      volumeLiters: 10,
-      bufferStrength: "weak",
+      targetPh: 6.2 as PH,
+      solutionVolumeL: 5,
+      phAdjusterType: "base",
+      adjusterConcentration: 25, // 25% potassium hydroxide
     });
-    expect(result.direction).toBe("base");
-    expect(result.amountMl).toBeGreaterThan(0);
-    expect(result.baseType).toBeDefined();
+    expect(result.adjusterVolumeMl).toBeGreaterThan(0);
+    expect(result.adjusterVolumeMl).toBeLessThan(50); // Should be a reasonable amount
+    expect(result.warnings.length).toBe(0);
   });
 
-  it("returns zero adjustment when pH matches target", () => {
+  it("returns 0 if current pH is already at target", () => {
     const result = calculatePhAdjustment({
       currentPh: 6.0 as PH,
       targetPh: 6.0 as PH,
-      volumeLiters: 10,
+      solutionVolumeL: 10,
+      phAdjusterType: "acid",
+      adjusterConcentration: 80,
     });
-    expect(result.amountMl).toBe(0);
-    expect(result.direction).toBe("none");
+    expect(result.adjusterVolumeMl).toBe(0);
+    expect(result.warnings.length).toBe(0);
   });
 
-  it("scales with volume", () => {
-    const small = calculatePhAdjustment({
+  it("throws error for invalid pH values", () => {
+    expect(() =>
+      calculatePhAdjustment({
+        currentPh: 15.0 as PH,
+        targetPh: 6.0 as PH,
+        solutionVolumeL: 10,
+        phAdjusterType: "acid",
+        adjusterConcentration: 80,
+      })
+    ).toThrow("pH values must be between 0 and 14");
+
+    expect(() =>
+      calculatePhAdjustment({
+        currentPh: 7.0 as PH,
+        targetPh: -1.0 as PH,
+        solutionVolumeL: 10,
+        phAdjusterType: "acid",
+        adjusterConcentration: 80,
+      })
+    ).toThrow("pH values must be between 0 and 14");
+  });
+
+  it("throws error for invalid adjuster concentration", () => {
+    expect(() =>
+      calculatePhAdjustment({
+        currentPh: 7.0 as PH,
+        targetPh: 6.0 as PH,
+        solutionVolumeL: 10,
+        phAdjusterType: "acid",
+        adjusterConcentration: 150,
+      })
+    ).toThrow("Adjuster concentration must be between 1 and 100");
+  });
+
+  it("throws error for zero solution volume", () => {
+    expect(() =>
+      calculatePhAdjustment({
+        currentPh: 7.0 as PH,
+        targetPh: 6.0 as PH,
+        solutionVolumeL: 0,
+        phAdjusterType: "acid",
+        adjusterConcentration: 80,
+      })
+    ).toThrow("Solution volume must be positive");
+  });
+
+  it("adds warning if acid is used to raise pH", () => {
+    const result = calculatePhAdjustment({
+      currentPh: 5.0 as PH,
+      targetPh: 6.0 as PH,
+      solutionVolumeL: 10,
+      phAdjusterType: "acid",
+      adjusterConcentration: 80,
+    });
+    expect(result.warnings.length).toBeGreaterThan(0);
+    expect(result.warnings[0]).toContain("Using acid to raise pH is unusual");
+  });
+
+  it("adds warning if base is used to lower pH", () => {
+    const result = calculatePhAdjustment({
       currentPh: 7.0 as PH,
-      targetPh: 5.5 as PH,
-      volumeLiters: 10,
+      targetPh: 6.0 as PH,
+      solutionVolumeL: 10,
+      phAdjusterType: "base",
+      adjusterConcentration: 25,
     });
-    const large = calculatePhAdjustment({
-      currentPh: 7.0 as PH,
-      targetPh: 5.5 as PH,
-      volumeLiters: 20,
+    expect(result.warnings.length).toBeGreaterThan(0);
+    expect(result.warnings[0]).toContain("Using base to lower pH is unusual");
+  });
+
+  it("acid calculation for extreme pH difference", () => {
+    const result = calculatePhAdjustment({
+      currentPh: 10.0 as PH,
+      targetPh: 5.0 as PH,
+      solutionVolumeL: 1,
+      phAdjusterType: "acid",
+      adjusterConcentration: 80,
     });
-    expect(large.amountMl).toBeCloseTo(small.amountMl * 2, 1);
+    expect(result.adjusterVolumeMl).toBeGreaterThan(0.1);
+    expect(result.adjusterVolumeMl).toBeLessThan(100);
   });
 
-  it("accounts for buffer strength", () => {
-    const weak = calculatePhAdjustment({
-      currentPh: 7.0 as PH,
-      targetPh: 5.5 as PH,
-      volumeLiters: 10,
-      bufferStrength: "weak",
+  it("base calculation for extreme pH difference", () => {
+    const result = calculatePhAdjustment({
+      currentPh: 4.0 as PH,
+      targetPh: 9.0 as PH,
+      solutionVolumeL: 1,
+      phAdjusterType: "base",
+      adjusterConcentration: 25,
     });
-    const strong = calculatePhAdjustment({
-      currentPh: 7.0 as PH,
-      targetPh: 5.5 as PH,
-      volumeLiters: 10,
-      bufferStrength: "strong",
-    });
-    expect(strong.amountMl).toBeGreaterThan(weak.amountMl);
-  });
-});
-
-// ──────────────────────────────────────────────
-// Media preparation calculation tests
-// ──────────────────────────────────────────────
-
-describe("calculateMediaPreparation", () => {
-  it("calculates MS media for 1 liter", () => {
-    const result = calculateMediaPreparation("ms", 1);
-    expect(result.totalWeightGrams).toBeGreaterThan(0);
-    expect(result.components.length).toBeGreaterThan(0);
-    expect(result.components.every(c => c.grams > 0)).toBe(true);
-  });
-
-  it("scales linearly with volume", () => {
-    const oneLiter = calculateMediaPreparation("ms", 1);
-    const twoLiters = calculateMediaPreparation("ms", 2);
-    expect(twoLiters.totalWeightGrams).toBeCloseTo(oneLiter.totalWeightGrams * 2, 1);
-  });
-
-  it("includes agar when specified", () => {
-    const withAgar = calculateMediaPreparation("ms", 1, { agarPercent: 0.8 });
-    const agarComponent = withAgar.components.find(c => 
-      c.name.toLowerCase().includes("agar")
-    );
-    expect(agarComponent).toBeDefined();
-    expect(agarComponent?.grams).toBeCloseTo(8, 0); // 0.8% of 1L = 8g
-  });
-
-  it("includes sugar when specified", () => {
-    const withSugar = calculateMediaPreparation("ms", 1, { sugarPercent: 3.0 });
-    const sugarComponent = withSugar.components.find(c => 
-      c.name.toLowerCase().includes("sugar") || 
-      c.name.toLowerCase().includes("sucrose")
-    );
-    expect(sugarComponent).toBeDefined();
-    expect(sugarComponent?.grams).toBeCloseTo(30, 0); // 3% of 1L = 30g
-  });
-
-  it("returns different formulations for different media types", () => {
-    const ms = calculateMediaPreparation("ms", 1);
-    const b5 = calculateMediaPreparation("b5", 1);
-    expect(ms.totalWeightGrams).not.toBe(b5.totalWeightGrams);
-  });
-
-  it("throws for unknown media type", () => {
-    expect(() => calculateMediaPreparation("unknown-media", 1)).toThrow();
-  });
-});
-
-// ──────────────────────────────────────────────
-// Media formulation database tests
-// ──────────────────────────────────────────────
-
-describe("media formulation database", () => {
-  it("getAllMedia returns multiple formulations", () => {
-    const all = getAllMedia();
-    expect(all.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it("getMediaFormulation returns MS recipe", () => {
-    const ms = getMediaFormulation("ms");
-    expect(ms).toBeDefined();
-    expect(ms?.name.toLowerCase()).toContain("murashige");
-  });
-
-  it("getMediaFormulation returns B5 recipe", () => {
-    const b5 = getMediaFormulation("b5");
-    expect(b5).toBeDefined();
-    expect(b5?.name.toLowerCase()).toContain("gamborg");
-  });
-
-  it("returns undefined for unknown media", () => {
-    expect(getMediaFormulation("nonexistent")).toBeUndefined();
-  });
-});
-
-// ──────────────────────────────────────────────
-// Growth regulator database tests
-// ──────────────────────────────────────────────
-
-describe("growth regulator database", () => {
-  it("getAllGrowthRegulators returns regulators", () => {
-    const all = getAllGrowthRegulators();
-    expect(all.length).toBeGreaterThanOrEqual(3);
-  });
-
-  it("returns BAP details", () => {
-    const bap = getGrowthRegulator("bap");
-    expect(bap).toBeDefined();
-    expect(bap?.name).toContain("Benzyl");
-  });
-
-  it("returns NAA details", () => {
-    const naa = getGrowthRegulator("naa");
-    expect(naa).toBeDefined();
-    expect(naa?.name).toContain("Naphthalene");
-  });
-
-  it("returns undefined for unknown regulator", () => {
-    expect(getGrowthRegulator("xyz")).toBeUndefined();
+    expect(result.adjusterVolumeMl).toBeGreaterThan(0.1);
+    expect(result.adjusterVolumeMl).toBeLessThan(100);
   });
 });
