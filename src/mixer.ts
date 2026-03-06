@@ -54,10 +54,10 @@ export function calculateMix(
   const round = (value: number): number => Number(value.toFixed(roundingDecimals));
 
   if (stocks.length === 0) {
-    throw new Error('At least one stock solution required');
+    throw new Error('At least one stock solution must be provided. Add stock solutions to perform calculations.');
   }
   if (target.ecTarget <= 0) {
-    throw new RangeError('EC target must be positive');
+    throw new RangeError(`EC target must be a positive number (received ${target.ecTarget})`);
   }
 
   // Check for duplicate stock IDs
@@ -72,10 +72,10 @@ export function calculateMix(
   // Validate stock solution properties
   stocks.forEach((stock) => {
     if (stock.dilutionFactor <= 0) {
-      throw new RangeError(`Stock solution ${stock.id} has invalid dilution factor (must be >0)`);
+      throw new RangeError(`Stock solution '${stock.id}' has invalid dilution factor (${stock.dilutionFactor}). Must be greater than 0.`);
     }
     if (stock.constituents.length === 0) {
-      throw new Error(`Stock solution ${stock.id} has no constituents`);
+      throw new Error(`Stock solution ${stock.id} has no constituents - each stock must contain at least one nutrient.`);
     }
     stock.constituents.forEach((constituent) => {
       if (constituent.gramsPerLiter <= 0) {
@@ -89,7 +89,7 @@ export function calculateMix(
 
   // Validate pH target range
   if (target.phTarget !== undefined && (target.phTarget < 0 || target.phTarget > 14)) {
-    throw new RangeError('pH target must be between 0 and 14');
+    throw new RangeError(`pH target must be between 0 and 14 (received ${target.phTarget})`);
   }
 
   const compatibility = checkCompatibility(stocks);
@@ -110,7 +110,7 @@ export function calculateMix(
   });
 
   if (totalMaxEc < target.ecTarget) {
-    throw new Error(`EC target ${target.ecTarget} mS/cm exceeds maximum achievable ${round(totalMaxEc)}`);
+    throw new Error(`EC target of ${target.ecTarget} mS/cm cannot be achieved. Maximum possible EC with current stocks is ${round(totalMaxEc)} mS/cm.`);
   }
 
   const dilutionFactor = target.ecTarget / totalMaxEc;
