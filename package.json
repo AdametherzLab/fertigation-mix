@@ -1,6 +1,6 @@
 {
   "name": "@adametherzlab/fertigation-mix",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "description": "Complete tissue culture and hydroponics toolkit — beginner walkthrough, 10 SOPs, sterilization calculator, media formulations, growth regulators, EC/pH tools",
   "type": "module",
   "main": "./dist/index.js",

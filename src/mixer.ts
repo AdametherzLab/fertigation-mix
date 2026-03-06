@@ -60,6 +60,26 @@ export function calculateMix(
     throw new RangeError('EC target must be positive');
   }
 
+  // Validate stock solution properties
+  stocks.forEach((stock) => {
+    if (stock.dilutionFactor <= 0) {
+      throw new RangeError(`Stock solution ${stock.id} has invalid dilution factor (must be >0)`);
+    }
+    stock.constituents.forEach((constituent) => {
+      if (constituent.gramsPerLiter <= 0) {
+        throw new RangeError(`Stock solution ${stock.id} has invalid grams per liter for ${constituent.nutrientId} (must be >0)`);
+      }
+      if (!getNutrientById(constituent.nutrientId)) {
+        throw new Error(`Stock solution ${stock.id} contains unknown nutrient: ${constituent.nutrientId}`);
+      }
+    });
+  });
+
+  // Validate pH target range
+  if (target.phTarget !== undefined && (target.phTarget < 0 || target.phTarget > 14)) {
+    throw new RangeError('pH target must be between 0 and 14');
+  }
+
   const compatibility = checkCompatibility(stocks);
   if (!compatibility.compatible) {
     warnings.push(`Chemical incompatibilities detected: ${compatibility.incompatibilities.join(', ')}`);
@@ -70,9 +90,7 @@ export function calculateMix(
     let maxEc = 0;
     for (const constituent of stock.constituents) {
       const nutrient = getNutrientById(constituent.nutrientId);
-      if (!nutrient) {
-        throw new Error(`Unknown nutrient: ${constituent.nutrientId}`);
-      }
+      if (!nutrient) throw new Error(`Unknown nutrient: ${constituent.nutrientId}`);
       maxEc += (constituent.gramsPerLiter * nutrient.ecPerGram) / stock.dilutionFactor;
     }
     totalMaxEc += maxEc;
