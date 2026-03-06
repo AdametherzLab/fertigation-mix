@@ -198,36 +198,68 @@ describe("calculateMix", () => {
       dilutionFactor: 0,
       constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: 100 }],
     }];
-    expect(() => calculateMix({ ecTarget: 1.0 as EC }, stocks))
-      .toThrow("dilution factor");
+    expect(() => calculateMix({ ecTarget: 1 as EC }, stocks)).toThrow("invalid dilution factor");
   });
 
-  it("throws for constituent with negative gramsPerLiter", () => {
+  it("throws for stock with invalid nutrient ID", () => {
     const stocks: StockSolution[] = [{
       id: "s1",
       dilutionFactor: 1,
-      constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: -50 }],
+      constituents: [{ nutrientId: "invalid-nutrient", gramsPerLiter: 100 }],
     }];
-    expect(() => calculateMix({ ecTarget: 1.0 as EC }, stocks))
-      .toThrow("grams per liter");
+    expect(() => calculateMix({ ecTarget: 1.0 as EC }, stocks)).toThrow("unknown nutrient");
   });
 
-  it("throws for invalid pH target", () => {
+  it("throws for stock constituent with non-positive gramsPerLiter", () => {
+    const stocks: StockSolution[] = [{
+      id: "s1",
+      dilutionFactor: 1,
+      constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: 0 }],
+    }];
+    expect(() => calculateMix({ ecTarget: 1.0 as EC }, stocks)).toThrow("must be >0");
+  });
+
+  it("throws for pH target outside 0-14", () => {
     const stocks: StockSolution[] = [{
       id: "s1",
       dilutionFactor: 1,
       constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: 100 }],
     }];
-    expect(() => calculateMix({ ecTarget: 1.0 as EC, phTarget: -1 as PH }, stocks))
-      .toThrow("pH target must be between 0 and 14");
+    expect(() => calculateMix({ ecTarget: 1.0 as EC, phTarget: 15 as PH }, stocks))
+      .toThrow("between 0 and 14");
   });
 
-  it("works with new nutrients (ammonium-nitrate)", () => {
-    const stocks: StockSolution[] = [{
-      id: "stock-an",
-      dilutionFactor: 1,
-      constituents: [{ nutrientId: "ammonium-nitrate", gramsPerLiter: 50 }],
-    }];
+  it("throws for duplicate stock IDs", () => {
+    const stocks: StockSolution[] = [
+      {
+        id: "s1",
+        dilutionFactor: 1,
+        constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: 100 }],
+      },
+      {
+        id: "s1",
+        dilutionFactor: 1,
+        constituents: [{ nutrientId: "potassium-nitrate", gramsPerLiter: 100 }],
+      },
+    ];
+    expect(() => calculateMix({ ecTarget: 1.0 as EC }, stocks)).toThrow("Duplicate stock solution ID");
+  });
 
-    // Rest of the test remains unchanged...
+  it("throws when EC target exceeds achievable level", () => {
+    const stocks: StockSolution[] = [{
+      id: "s1",
+      dilutionFactor: 1,
+      constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: 100 }],
+    }];
+    expect(() => calculateMix({ ecTarget: 100 as EC }, stocks)).toThrow("cannot be achieved");
+  });
+
+  it("throws for stock with no constituents", () => {
+    const stocks: StockSolution[] = [{
+      id: "s1",
+      dilutionFactor: 1,
+      constituents: [],
+    }];
+    expect(() => calculateMix({ ecTarget: 1.0 as EC }, stocks)).toThrow("no constituents");
+  });
 });
