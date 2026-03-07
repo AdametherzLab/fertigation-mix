@@ -155,3 +155,74 @@ export function calculateMix(
     warnings,
   };
 }
+
+/**
+ * Extended mix target including total volume for stock solution calculations.
+ */
+export interface VolumeMixTarget extends MixTarget {
+  /** Total desired volume of final nutrient solution in liters */
+  totalVolumeLiters: number;
+}
+
+/**
+ * Result of stock volume calculation including absolute volumes.
+ */
+export interface StockVolumeResult extends MixResult {
+  /** Volume of each stock solution required in milliliters */
+  stockVolumes: Record<string, number>;
+  /** Volume of water required in milliliters */
+  waterVolume: number;
+  /** Total volume of final solution in milliliters */
+  totalVolume: number;
+}
+
+/**
+ * Calculate required stock solution volumes for a target EC/pH and total volume.
+ * @param target - Desired EC, optional pH, and total volume
+ * @param stocks - Available stock solutions with their dilution factors
+ * @param config - Calculator configuration (rounding precision)
+ * @returns Mix result with absolute stock volumes, water volume, and total volume
+ * @throws {Error} If total volume is invalid or if mix calculation fails
+ * @example
+ * const result = calculateStockVolumes(
+ *   { ecTarget: 2.0, totalVolumeLiters: 100 },
+ *   [{ id: 'stock1', dilutionFactor: 100, constituents: [...] }]
+ * );
+ * // result.stockVolumes = { stock1: 720, ... }
+ * // result.waterVolume = 99280
+ */
+export function calculateStockVolumes(
+  target: VolumeMixTarget,
+  stocks: readonly StockSolution[],
+  config: CalculatorConfig = {},
+): StockVolumeResult {
+  if (target.totalVolumeLiters <= 0) {
+    throw new RangeError(`Total volume must be positive (received ${target.totalVolumeLiters})`);
+  }
+
+  const mixResult = calculateMix(target, stocks, config);
+  const { roundingDecimals = 0 } = config;
+  const round = (value: number) => Number(value.toFixed(roundingDecimals));
+
+  const stockVolumes: Record<string, number> = {};
+  let totalStockVolume = 0;
+
+  for (const stock of stocks) {
+    const ratio = mixResult.dilutionRatios[stock.id];
+    const volumeLiters = ratio * target.totalVolumeLiters;
+    const volumeMl = volumeLiters * 1000;
+    const roundedVolume = round(volumeMl);
+    stockVolumes[stock.id] = roundedVolume;
+    totalStockVolume += roundedVolume;
+  }
+
+  const totalVolumeMl = target.totalVolumeLiters * 1000;
+  const waterVolume = round(totalVolumeMl - totalStockVolume);
+
+  return {
+    ...mixResult,
+    stockVolumes,
+    waterVolume,
+    totalVolume: totalVolumeMl,
+  };
+}

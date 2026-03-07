@@ -1,56 +1,42 @@
-export type {
-  EC,
-  PH,
-  Percentage,
-  Nutrient,
-  MixTarget,
-  StockSolution,
-  MixResult,
-  CompatibilityResult,
-  CalculatorConfig,
-} from "./types.js";
+export {
+  getNutrientById,
+  getAllNutrients,
+  checkCompatibility as checkNutrientCompatibility,
+} from './nutrients.js';
+export type { Nutrient } from './nutrients.js';
 
-export { getNutrientById, getAllNutrients } from "./nutrients.js";
-export { checkCompatibility as checkNutrientCompatibility } from "./nutrients.js";
 export {
   checkCompatibility as checkStockCompatibility,
   calculateMix,
-} from "./mixer.js";
-
+  calculateStockVolumes,
+} from './mixer.js';
 export type {
-  MediaType,
-  MediaComponent,
-  MediaFormulation,
-  GrowthRegulator,
-  MediaRecipe,
-  MediaPreparation,
-} from "./tissue-culture.js";
+  MixTarget,
+  MixResult,
+  CompatibilityResult,
+  VolumeMixTarget,
+  StockVolumeResult,
+} from './mixer.js';
+
+export type { EC, PH, MediaRecipe, StockSolution, CalculatorConfig } from './types.js';
+
+// Sterilization exports
 export {
-  getMediaFormulation,
-  getAllMedia,
-  getGrowthRegulator,
-  getAllGrowthRegulators,
-  calculateMediaPreparation,
-} from "./tissue-culture.js";
-
-export { ecToPpm, ppmToEc, convertUnit } from "./converter.js";
-
-export type { PhAdjustment } from "./ph-adjust.js";
-export { calculatePhAdjustment } from "./ph-adjust.js";
-
-// --- v3.0.0: Guide, Sterilization, and SOP modules ---
-
+  calculateSterilization,
+  calculateAutoclave,
+  getSOP,
+  getAllSOPs,
+  formatSOP,
+} from './sterilization.js';
 export type {
-  DifficultyLevel,
-  CultureStage,
-  EquipmentItem,
-  SterilizationStep,
-  SterilizationProtocol,
-  BeginnerPlant,
-  WalkthroughStep,
-  TroubleshootingEntry,
-  StockSolutionGuide,
-} from "./guide.js";
+  SterilizationInput,
+  SterilizationResult,
+  AutoclaveInput,
+  AutoclaveResult,
+  SOP,
+} from './sterilization.js';
+
+// Guide exports
 export {
   getEquipmentList,
   estimateSetupCost,
@@ -60,23 +46,35 @@ export {
   getTroubleshooting,
   getStockSolutionGuides,
   getStockSolutionGuide,
-} from "./guide.js";
-
+} from './guide.js';
 export type {
-  ExplantHardiness,
-  SOPFormat,
-  SterilizationInput,
-  SterilizationResult,
-  SterilizationStepDetail,
-  AutoclaveInput,
-  AutoclaveResult,
-  SOPName,
-  SOPDocument,
-} from "./sterilization.js";
+  EquipmentItem,
+  PlantProtocol,
+  WalkthroughStep,
+  TroubleshootingEntry,
+  StockSolutionGuide,
+} from './guide.js';
+
+// Media exports
 export {
-  calculateSterilization,
-  calculateAutoclave,
-  getSOP,
-  getAllSOPs,
-  formatSOP,
-} from "./sterilization.js";
+  getMediaFormulation,
+  getAllMedia,
+  getGrowthRegulator,
+  getAllGrowthRegulators,
+  calculateMediaPreparation,
+} from './media.js';
+export type {
+  MediaRecipe,
+  GrowthRegulator,
+  MediaPreparationInput,
+  MediaPreparationResult,
+} from './media.js';
+
+// Utility exports
+export {
+  ecToPpm,
+  ppmToEc,
+  convertUnit,
+  calculatePhAdjustment,
+} from './utils.js';
+export type { UnitConversion, PhAdjustmentInput, PhAdjustmentResult } from './utils.js';

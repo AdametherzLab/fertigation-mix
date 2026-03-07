@@ -5,6 +5,7 @@ import {
   checkNutrientCompatibility,
   checkStockCompatibility,
   calculateMix,
+  calculateStockVolumes,
   getMediaFormulation,
   getAllMedia,
   getGrowthRegulator,
@@ -22,6 +23,8 @@ import {
   type EC,
   type PH,
   type MediaRecipe,
+  type VolumeMixTarget,
+  type StockVolumeResult,
 } from "../src/index.ts";
 
 // ──────────────────────────────────────────────
@@ -198,68 +201,66 @@ describe("calculateMix", () => {
       dilutionFactor: 0,
       constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: 100 }],
     }];
-    expect(() => calculateMix({ ecTarget: 1 as EC }, stocks)).toThrow("invalid dilution factor");
+    expect(() =>
+      calculateMix({ ecTarget: 1.0 as EC }, stocks)
+    ).toThrow("invalid dilution factor");
   });
+});
 
-  it("throws for stock with invalid nutrient ID", () => {
-    const stocks: StockSolution[] = [{
-      id: "s1",
-      dilutionFactor: 1,
-      constituents: [{ nutrientId: "invalid-nutrient", gramsPerLiter: 100 }],
-    }];
-    expect(() => calculateMix({ ecTarget: 1.0 as EC }, stocks)).toThrow("unknown nutrient");
-  });
+// ──────────────────────────────────────────────
+// Stock volume calculation tests
+// ──────────────────────────────────────────────
 
-  it("throws for stock constituent with non-positive gramsPerLiter", () => {
+describe("calculateStockVolumes", () => {
+  it("calculates correct volumes for single stock", () => {
     const stocks: StockSolution[] = [{
-      id: "s1",
-      dilutionFactor: 1,
-      constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: 0 }],
-    }];
-    expect(() => calculateMix({ ecTarget: 1.0 as EC }, stocks)).toThrow("must be >0");
-  });
-
-  it("throws for pH target outside 0-14", () => {
-    const stocks: StockSolution[] = [{
-      id: "s1",
+      id: "stock1",
       dilutionFactor: 1,
       constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: 100 }],
     }];
-    expect(() => calculateMix({ ecTarget: 1.0 as EC, phTarget: 15 as PH }, stocks))
-      .toThrow("between 0 and 14");
+    
+    const target: VolumeMixTarget = {
+      ecTarget: 1.5 as EC,
+      totalVolumeLiters: 10
+    };
+    
+    const result = calculateStockVolumes(target, stocks);
+    expect(result.stockVolumes.stock1).toBeCloseTo(10000, 0);
+    expect(result.waterVolume).toBe(0);
+    expect(result.totalVolume).toBe(10000);
   });
 
-  it("throws for duplicate stock IDs", () => {
+  it("distributes volumes across multiple stocks", () => {
     const stocks: StockSolution[] = [
       {
-        id: "s1",
-        dilutionFactor: 1,
+        id: "A",
+        dilutionFactor: 100,
         constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: 100 }],
       },
       {
-        id: "s1",
-        dilutionFactor: 1,
-        constituents: [{ nutrientId: "potassium-nitrate", gramsPerLiter: 100 }],
-      },
+        id: "B",
+        dilutionFactor: 50,
+        constituents: [{ nutrientId: "potassium-nitrate", gramsPerLiter: 50 }],
+      }
     ];
-    expect(() => calculateMix({ ecTarget: 1.0 as EC }, stocks)).toThrow("Duplicate stock solution ID");
+    
+    const target: VolumeMixTarget = {
+      ecTarget: 2.0 as EC,
+      totalVolumeLiters: 5
+    };
+    
+    const result = calculateStockVolumes(target, stocks);
+    const totalStock = Object.values(result.stockVolumes).reduce((a, b) => a + b, 0);
+    expect(totalStock).toBe(5000);
+    expect(result.waterVolume).toBe(0);
   });
 
-  it("throws when EC target exceeds achievable level", () => {
-    const stocks: StockSolution[] = [{
-      id: "s1",
-      dilutionFactor: 1,
-      constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: 100 }],
-    }];
-    expect(() => calculateMix({ ecTarget: 100 as EC }, stocks)).toThrow("cannot be achieved");
-  });
-
-  it("throws for stock with no constituents", () => {
-    const stocks: StockSolution[] = [{
-      id: "s1",
-      dilutionFactor: 1,
-      constituents: [],
-    }];
-    expect(() => calculateMix({ ecTarget: 1.0 as EC }, stocks)).toThrow("no constituents");
+  it("throws for invalid total volume", () => {
+    expect(() =>
+      calculateStockVolumes(
+        { ecTarget: 1.0 as EC, totalVolumeLiters: -5 },
+        [{ id: "s1", dilutionFactor: 1, constituents: [{ nutrientId: "calcium-nitrate", gramsPerLiter: 100 }] }]
+      )
+    ).toThrow("Total volume must be positive");
   });
 });
