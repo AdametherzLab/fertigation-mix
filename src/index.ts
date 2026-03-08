@@ -1,42 +1,30 @@
+// Nutrient database and compatibility
 export {
   getNutrientById,
   getAllNutrients,
   checkCompatibility as checkNutrientCompatibility,
-} from './nutrients.js';
-export type { Nutrient } from './nutrients.js';
+  registerNutrient,
+  unregisterNutrient,
+  clearCustomNutrients,
+} from "./nutrients.js";
 
+// Mixer and calculations
 export {
-  checkCompatibility as checkStockCompatibility,
   calculateMix,
   calculateStockVolumes,
-} from './mixer.js';
-export type {
-  MixTarget,
-  MixResult,
-  CompatibilityResult,
-  VolumeMixTarget,
-  StockVolumeResult,
-} from './mixer.js';
+  checkCompatibility as checkStockCompatibility,
+} from "./mixer.js";
 
-export type { EC, PH, MediaRecipe, StockSolution, CalculatorConfig } from './types.js';
-
-// Sterilization exports
+// Sterilization (re-exported from sterilization module)
 export {
   calculateSterilization,
   calculateAutoclave,
   getSOP,
   getAllSOPs,
   formatSOP,
-} from './sterilization.js';
-export type {
-  SterilizationInput,
-  SterilizationResult,
-  AutoclaveInput,
-  AutoclaveResult,
-  SOP,
-} from './sterilization.js';
+} from "./sterilization.js";
 
-// Guide exports
+// Guide and protocols (re-exported from guide module)
 export {
   getEquipmentList,
   estimateSetupCost,
@@ -46,35 +34,48 @@ export {
   getTroubleshooting,
   getStockSolutionGuides,
   getStockSolutionGuide,
-} from './guide.js';
-export type {
-  EquipmentItem,
-  PlantProtocol,
-  WalkthroughStep,
-  TroubleshootingEntry,
-  StockSolutionGuide,
-} from './guide.js';
+} from "./guide.js";
 
-// Media exports
+// Media preparation (re-exported from media module)
 export {
   getMediaFormulation,
   getAllMedia,
   getGrowthRegulator,
   getAllGrowthRegulators,
   calculateMediaPreparation,
-} from './media.js';
-export type {
-  MediaRecipe,
-  GrowthRegulator,
-  MediaPreparationInput,
-  MediaPreparationResult,
-} from './media.js';
+} from "./media.js";
 
-// Utility exports
+// Utilities (re-exported from utils module)
 export {
   ecToPpm,
   ppmToEc,
   convertUnit,
   calculatePhAdjustment,
-} from './utils.js';
-export type { UnitConversion, PhAdjustmentInput, PhAdjustmentResult } from './utils.js';
+} from "./utils.js";
+
+// Type exports
+export type {
+  Nutrient,
+  StockSolution,
+  MixTarget,
+  MixResult,
+  CompatibilityResult,
+  EC,
+  PH,
+  MediaRecipe,
+  VolumeMixTarget,
+  StockVolumeResult,
+  CalculatorConfig,
+  Constituent,
+  GrowthRegulator,
+  SterilizationInput,
+  SterilizationResult,
+  AutoclaveInput,
+  AutoclaveResult,
+  SOP,
+  EquipmentItem,
+  PlantProtocol,
+  WalkthroughStep,
+  TroubleshootingEntry,
+  StockGuide,
+} from "./types.js";

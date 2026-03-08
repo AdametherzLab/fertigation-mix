@@ -113,25 +113,87 @@ const predefinedNutrients = [
   },
 ] as const satisfies readonly Nutrient[];
 
+// Storage for custom nutrients registered at runtime
+const customNutrients = new Map<string, Nutrient>();
+
+/**
+ * Register a custom nutrient definition.
+ * Custom nutrients are stored separately from predefined nutrients and persist
+ * for the lifetime of the application unless cleared.
+ * 
+ * @param nutrient - The nutrient definition to register
+ * @throws {Error} If a nutrient with the same ID already exists (predefined or custom)
+ * @example
+ * registerNutrient({
+ *   id: "custom-calcium",
+ *   name: "Custom Calcium Source",
+ *   chemicalComposition: "CaX2",
+ *   ca: 30.0,
+ *   ecPerGram: 0.5,
+ *   solubility: 500,
+ *   incompatibleWith: []
+ * });
+ */
+export function registerNutrient(nutrient: Nutrient): void {
+  if (predefinedNutrients.some(n => n.id === nutrient.id)) {
+    throw new Error(`Cannot override predefined nutrient: ${nutrient.id}`);
+  }
+  if (customNutrients.has(nutrient.id)) {
+    throw new Error(`Custom nutrient already registered: ${nutrient.id}`);
+  }
+  customNutrients.set(nutrient.id, nutrient);
+}
+
+/**
+ * Unregister a custom nutrient by ID.
+ * Predefined nutrients cannot be unregistered.
+ * 
+ * @param id - The ID of the custom nutrient to remove
+ * @returns true if removed, false if not found or if it's a predefined nutrient
+ * @example
+ * unregisterNutrient("custom-calcium");
+ */
+export function unregisterNutrient(id: string): boolean {
+  if (predefinedNutrients.some(n => n.id === id)) {
+    return false;
+  }
+  return customNutrients.delete(id);
+}
+
+/**
+ * Clear all custom nutrient definitions.
+ * This removes all nutrients registered via registerNutrient().
+ * Predefined nutrients are unaffected.
+ * 
+ * @example
+ * clearCustomNutrients();
+ */
+export function clearCustomNutrients(): void {
+  customNutrients.clear();
+}
+
 /**
  * Retrieve a nutrient by its unique identifier.
+ * Checks predefined nutrients first, then custom nutrients.
  * @param id - Nutrient ID to lookup (case-sensitive)
  * @returns Nutrient object or undefined if not found
  * @example
  * const calciumNitrate = getNutrientById('calcium-nitrate');
  */
 export function getNutrientById(id: string): Nutrient | undefined {
-  return predefinedNutrients.find((nutrient) => nutrient.id === id);
+  const predefined = predefinedNutrients.find((nutrient) => nutrient.id === id);
+  if (predefined) return predefined;
+  return customNutrients.get(id);
 }
 
 /**
  * Get all defined nutrients in the database.
- * @returns Readonly array of all nutrients (prevents mutation)
+ * @returns Readonly array of all nutrients (predefined + custom)
  * @example
  * const allNutrients = getAllNutrients();
  */
 export function getAllNutrients(): readonly Nutrient[] {
-  return predefinedNutrients;
+  return [...predefinedNutrients, ...customNutrients.values()];
 }
 
 /**
